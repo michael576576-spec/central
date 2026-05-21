@@ -87,6 +87,21 @@ def compute_cv(scores: dict) -> float:
     return float(values.std(ddof=1) / mu)
 
 
+def compute_gini_degree(G: nx.Graph) -> float:
+    """
+    度序列的 Gini 系数。
+    G = Σ(2i - n - 1) * v_i / (n * Σv_i)，v_i 为升序排列的度序列。
+    所有度为 0 或节点数 < 2 时返回 NaN。
+    """
+    degrees = np.array(sorted(d for _, d in G.degree()), dtype=float)
+    n = len(degrees)
+    total = degrees.sum()
+    if total == 0 or n < 2:
+        return float("nan")
+    weights = 2 * np.arange(1, n + 1) - n - 1
+    return float((weights * degrees).sum() / (n * total))
+
+
 # ─────────────────────────────────────────────
 # 弗里曼分母辅助函数
 # ─────────────────────────────────────────────
@@ -139,6 +154,7 @@ def compute_all_metrics(G: nx.Graph, c_max_ref: int | None = None) -> dict[str, 
         "cv_degree":        compute_cv(scores_deg),
         "cv_harmonic":      compute_cv(scores_har),
         "cv_coreness":      compute_cv(scores_cor),
+        "gini_degree":      compute_gini_degree(G),
     }
 
 

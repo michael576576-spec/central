@@ -6,6 +6,8 @@
 3. 隐参数模型（Hidden Variable Model）：度序列期望相等
 """
 
+from __future__ import annotations
+
 import random
 import itertools
 import networkx as nx

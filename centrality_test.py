@@ -243,5 +243,5 @@ if __name__ == "__main__":
     print(f"原始图：N={G.number_of_nodes()}, M={G.number_of_edges()}")
     print()
 
-    result = test_hub(G, n_samples=500, model="gnm", alpha=0.05, seed=42)
+    result = test_hub(G, n_samples=1000, model="gnp", alpha=0.05, seed=42)
     print(result.to_string(index=False))

@@ -152,10 +152,10 @@ def compute_all_metrics(G: nx.Graph, c_max_ref: int | None = None) -> dict[str, 
         "freeman_harmonic": compute_freeman(scores_har, N, _denom_harmonic(N)),
         "freeman_coreness": compute_freeman(scores_cor, N, _denom_coreness(N, c_max_ref)),
         "cv_degree":        compute_cv(scores_deg),
-        "cv_harmonic":      compute_cv(scores_har),
         "cv_coreness":      compute_cv(scores_cor),
         "gini_degree":      compute_gini_degree(G),
     }
+
 
 
 # ─────────────────────────────────────────────
@@ -184,9 +184,10 @@ def test_hub(
     -------
     pd.DataFrame，列为 metric / observed / p_value / reject_H0 / conclusion
     """
-    # 配置模型/隐参数模型保持度序列，基于度分布的指标无区分能力，跳过
+    # cv_harmonic 方向相反（有中心时反而更小），对所有零模型均跳过
+    # 配置模型/隐参数模型保持度序列，基于度分布的指标无区分能力，额外跳过
     DEGREE_BASED = {"H", "freeman_degree", "cv_degree", "gini_degree"}
-    skip = DEGREE_BASED if model in ("configuration", "hidden") else set()
+    skip = {"cv_harmonic"} | (DEGREE_BASED if model in ("configuration", "hidden") else set())
 
     # 固定 coreness 分母为原始图的最大 coreness
     cores = nx.core_number(G)

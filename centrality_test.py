@@ -184,18 +184,22 @@ def test_hub(
     -------
     pd.DataFrame，列为 metric / observed / p_value / reject_H0 / conclusion
     """
+    # 配置模型/隐参数模型保持度序列，基于度分布的指标无区分能力，跳过
+    DEGREE_BASED = {"H", "freeman_degree", "cv_degree", "gini_degree"}
+    skip = DEGREE_BASED if model in ("configuration", "hidden") else set()
+
     # 固定 coreness 分母为原始图的最大 coreness
     cores = nx.core_number(G)
     c_max_ref = max(cores.values()) if cores else 0
 
     # 计算原始图指标
-    observed = compute_all_metrics(G, c_max_ref)
+    observed = {k: v for k, v in compute_all_metrics(G, c_max_ref).items() if k not in skip}
 
     # 生成可复现的子种子
     rng = np.random.default_rng(seed)
     child_seeds = rng.integers(0, 2**31, size=n_samples).tolist()
 
-    # 收集零模型分布
+    # 收集零模型分布（只收集未跳过的指标）
     null_records: dict[str, list[float]] = {k: [] for k in observed}
 
     for i in range(n_samples):
@@ -204,7 +208,8 @@ def test_hub(
             G_null = null_model_from_graph(G, model=model, seed=child_seeds[i])
         null_vals = compute_all_metrics(G_null, c_max_ref)
         for k, v in null_vals.items():
-            null_records[k].append(v)
+            if k in null_records:
+                null_records[k].append(v)
 
     # 计算单侧 p 值：p = P(null >= observed)
     rows = []
@@ -243,5 +248,5 @@ if __name__ == "__main__":
     print(f"原始图：N={G.number_of_nodes()}, M={G.number_of_edges()}")
     print()
 
-    result = test_hub(G, n_samples=1000, model="gnp", alpha=0.05, seed=42)
+    result = test_hub(G, n_samples=1000, model="configuration", alpha=0.05, seed=42)
     print(result.to_string(index=False))

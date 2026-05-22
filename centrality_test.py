@@ -103,6 +103,45 @@ def compute_gini_degree(G: nx.Graph) -> float:
 
 
 # ─────────────────────────────────────────────
+# 直接图级统计量（不依赖节点打分）
+# ─────────────────────────────────────────────
+
+def compute_spectral(G: nx.Graph) -> tuple[float, float]:
+    """
+    返回 (λ₁, λ₂)，邻接矩阵最大和次大特征值。
+    在最大连通分量上计算，避免不连通图的零特征值污染 λ₂。
+    节点数 < 3 时返回 (NaN, NaN)。
+    """
+    import scipy.sparse.linalg as spla
+    if G.number_of_nodes() < 3:
+        return float("nan"), float("nan")
+    Gc = G.subgraph(max(nx.connected_components(G), key=len))
+    if Gc.number_of_nodes() < 3:
+        return float("nan"), float("nan")
+    A = nx.to_scipy_sparse_array(Gc, format="csr", dtype=float)
+    try:
+        vals = spla.eigsh(A, k=2, which="LM", return_eigenvectors=False)
+        vals = sorted(vals, reverse=True)
+        return float(vals[0]), float(vals[1])
+    except Exception:
+        return float("nan"), float("nan")
+
+
+def compute_global_efficiency(G: nx.Graph) -> float:
+    """全局网络效率 E = ⟨1/d(i,j)⟩，不连通节点对贡献 0。"""
+    if G.number_of_nodes() < 2:
+        return float("nan")
+    return float(nx.global_efficiency(G))
+
+
+def compute_n_articulation_pts(G: nx.Graph) -> float:
+    """割点数量（articulation points）。"""
+    if G.number_of_nodes() < 2:
+        return float("nan")
+    return float(len(list(nx.articulation_points(G))))
+
+
+# ─────────────────────────────────────────────
 # 弗里曼分母辅助函数
 # ─────────────────────────────────────────────
 
@@ -127,7 +166,7 @@ def _denom_coreness(N: int, c_max: int) -> float:
 
 def compute_all_metrics(G: nx.Graph, c_max_ref: int | None = None) -> dict[str, float]:
     """
-    计算原图或零模型图的全部 7 个指标。
+    计算原图或零模型图的全部 11 个指标（7 个节点打分聚合 + 4 个直接图级统计量）。
 
     Parameters
     ----------
@@ -146,14 +185,25 @@ def compute_all_metrics(G: nx.Graph, c_max_ref: int | None = None) -> dict[str, 
     if c_max_ref is None:
         c_max_ref = max(scores_cor.values()) if scores_cor else 0
 
+    lambda1, lambda2 = compute_spectral(G)
+    spectral_ratio = (
+        float(lambda1 / lambda2)
+        if not (np.isnan(lambda2) or lambda2 < 1e-10)
+        else float("nan")
+    )
+
     return {
-        "H":                compute_H(G),
-        "freeman_degree":   compute_freeman(scores_deg, N, _denom_degree(N)),
-        "freeman_harmonic": compute_freeman(scores_har, N, _denom_harmonic(N)),
-        "freeman_coreness": compute_freeman(scores_cor, N, _denom_coreness(N, c_max_ref)),
-        "cv_degree":        compute_cv(scores_deg),
-        "cv_coreness":      compute_cv(scores_cor),
-        "gini_degree":      compute_gini_degree(G),
+        "H":                  compute_H(G),
+        "freeman_degree":     compute_freeman(scores_deg, N, _denom_degree(N)),
+        "freeman_harmonic":   compute_freeman(scores_har, N, _denom_harmonic(N)),
+        "freeman_coreness":   compute_freeman(scores_cor, N, _denom_coreness(N, c_max_ref)),
+        "cv_degree":          compute_cv(scores_deg),
+        "cv_coreness":        compute_cv(scores_cor),
+        "gini_degree":        compute_gini_degree(G),
+        "spectral_radius":    lambda1,
+        "spectral_ratio":     spectral_ratio,
+        "global_efficiency":  compute_global_efficiency(G),
+        "n_articulation_pts": compute_n_articulation_pts(G),
     }
 
 

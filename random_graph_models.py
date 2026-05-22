@@ -78,9 +78,13 @@ def configuration_model(
         return G
 
     nswap = max(1, Q * M)
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        nx.double_edge_swap(G, nswap=nswap, max_tries=nswap * 20, seed=seed)
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            nx.double_edge_swap(G, nswap=nswap, max_tries=nswap * 20, seed=seed)
+    except nx.NetworkXAlgorithmError:
+        # 结构过于特殊（如星形图）导致无法完成足够次数的有效互换，返回尽力互换后的图
+        pass
     return G
 
 

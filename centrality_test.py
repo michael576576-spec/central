@@ -2,7 +2,7 @@
 基于随机图置换检验的中心节点统计检验
 
 流程：
-  1. 计算原始图的中心性指标（H、Freeman 中心势、变异系数）
+  1. 计算原始图的中心性指标（H、Freeman 中心势、变异系数、SIR 传播阈值等）
   2. 用零模型（默认隐参数模型）生成 n_samples 个随机图并计算相同指标
   3. 单侧置换检验计算 p 值，判断原图是否存在显著中心节点
 """
@@ -50,6 +50,23 @@ def compute_H(G: nx.Graph) -> float:
     if mean_k == 0:
         return float("nan")
     return float((degrees ** 2).mean() / mean_k ** 2)
+
+
+def compute_beta_c(G: nx.Graph) -> float:
+    """
+    SIR 大规模传播阈值 β_c = <k> / (<k²> - <k>)。
+    β_c 越小，SIR 越容易在网络中大规模传播，也越暗示存在中心节点。
+    若分母为 0，返回 inf，表示传播阈值无穷大。
+    """
+    degrees = np.array([d for _, d in G.degree()], dtype=float)
+    if len(degrees) == 0:
+        return float("nan")
+    mean_k = degrees.mean()
+    mean_k2 = (degrees ** 2).mean()
+    denominator = mean_k2 - mean_k
+    if denominator <= 0:
+        return float("inf")
+    return float(mean_k / denominator)
 
 
 def compute_freeman(scores: dict, N: int, denominator: float) -> float:
@@ -161,12 +178,12 @@ def _denom_coreness(N: int, c_max: int) -> float:
 
 
 # ─────────────────────────────────────────────
-# 顶层组装：计算全部 7 个指标
+# 顶层组装：计算全部指标
 # ─────────────────────────────────────────────
 
 def compute_all_metrics(G: nx.Graph, c_max_ref: int | None = None) -> dict[str, float]:
     """
-    计算原图或零模型图的全部 11 个指标（7 个节点打分聚合 + 4 个直接图级统计量）。
+    计算原图或零模型图的全部 12 个指标（7 个节点打分聚合 + 5 个直接图级统计量）。
 
     Parameters
     ----------
@@ -194,13 +211,14 @@ def compute_all_metrics(G: nx.Graph, c_max_ref: int | None = None) -> dict[str, 
 
     return {
         "H":                  compute_H(G),
+        "beta_c":             compute_beta_c(G),
         "freeman_degree":     compute_freeman(scores_deg, N, _denom_degree(N)),
         "freeman_harmonic":   compute_freeman(scores_har, N, _denom_harmonic(N)),
         "freeman_coreness":   compute_freeman(scores_cor, N, _denom_coreness(N, c_max_ref)),
         "cv_degree":          compute_cv(scores_deg),
         "cv_coreness":        compute_cv(scores_cor),
         "gini_degree":        compute_gini_degree(G),
-        "spectral_radius":    lambda1,
+        "spectral_radius":    lambda1, # 谱半径，与传播速度正相关
         "spectral_ratio":     spectral_ratio,
         "global_efficiency":  compute_global_efficiency(G),
         "n_articulation_pts": compute_n_articulation_pts(G),
@@ -236,7 +254,8 @@ def test_hub(
     """
     # cv_harmonic 方向相反（有中心时反而更小），对所有零模型均跳过
     # 配置模型/隐参数模型保持度序列，基于度分布的指标无区分能力，额外跳过
-    DEGREE_BASED = {"H", "freeman_degree", "cv_degree", "gini_degree"}
+    DEGREE_BASED = {"H", "beta_c", "freeman_degree", "cv_degree", "gini_degree"}
+    LOWER_IS_HUB = {"beta_c"}
     skip = {"cv_harmonic"} | (DEGREE_BASED if model in ("configuration", "hidden") else set())
 
     # 固定 coreness 分母为原始图的最大 coreness
@@ -262,7 +281,9 @@ def test_hub(
             if k in null_records:
                 null_records[k].append(v)
 
-    # 计算单侧 p 值：p = P(null >= observed)
+    # 计算单侧 p 值：
+    #   大多数指标越大越像有中心节点：p = P(null >= observed)
+    #   beta_c 越小越容易传播：      p = P(null <= observed)
     rows = []
     for metric, obs_val in observed.items():
         null_arr = np.array(null_records[metric], dtype=float)
@@ -276,7 +297,10 @@ def test_hub(
                 p_val = float("nan")
                 reject = False
             else:
-                p_val = float(np.sum(valid >= obs_val) / len(valid))
+                if metric in LOWER_IS_HUB:
+                    p_val = float(np.sum(valid <= obs_val) / len(valid))
+                else:
+                    p_val = float(np.sum(valid >= obs_val) / len(valid))
                 reject = p_val < alpha
 
         rows.append({

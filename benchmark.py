@@ -239,7 +239,7 @@ def evaluate(
 
 if __name__ == "__main__":
     print("=== 构造合成图并运行检验 ===\n")
-    summary, detail = evaluate(n_samples=500, model="hidden", alpha=0.05, seed=42)
+    summary, detail = evaluate(n_samples=500, model="gnm", alpha=0.05, seed=42)
 
     print("\n=== 每指标检测能力汇总 ===")
     print(summary.to_string(index=False))

@@ -61,6 +61,32 @@ def _double_hub(n_total: int, hub_degree: int, seed: int) -> nx.Graph:
     return G
 
 
+def _ba_with_explicit_hub(
+    n_total: int,
+    m: int,
+    hub_degree_ratio: float,
+    seed: int,
+) -> nx.Graph:
+    """
+    BA 背景 + 显式强 hub。
+
+    普通 BA 图容易落在边界区域；这里先生成一个 BA 背景网络，再强制
+    节点 0 连接到大比例节点，使其成为明确正例。
+    """
+    rng = np.random.default_rng(seed)
+    G = nx.barabasi_albert_graph(n_total, m, seed=seed)
+
+    n_hub_edges = max(1, int(n_total * hub_degree_ratio))
+    current_neighbors = set(G.neighbors(0))
+    candidates = [v for v in range(1, n_total) if v not in current_neighbors]
+    rng.shuffle(candidates)
+
+    n_to_add = min(max(0, n_hub_edges - len(current_neighbors)), len(candidates))
+    for v in candidates[:n_to_add]:
+        G.add_edge(0, v)
+    return G
+
+
 def make_benchmark_graphs(seed: int = 42) -> list[dict]:
     """
     构造一批已知答案的合成图。
@@ -76,12 +102,12 @@ def make_benchmark_graphs(seed: int = 42) -> list[dict]:
     rng = np.random.default_rng(seed)
     entries = []
 
-    def child(i):
+    def child_seed():
         return int(rng.integers(0, 2**31))
 
     # ── 正例：有中心节点 ──────────────────────────
     # 纯星形图（极端 hub）
-    for n_leaves in [19, 49, 99]:
+    for n_leaves in [19, 29, 49, 79, 119]:
         entries.append({
             "G": nx.star_graph(n_leaves),
             "has_hub": True,
@@ -90,28 +116,59 @@ def make_benchmark_graphs(seed: int = 42) -> list[dict]:
         })
 
     # hub + ER 背景噪声
-    for ratio in [0.3, 0.5, 0.8]:
-        G = _hub_er(50, ratio, seed=child(0))
+    for N, ratio in [
+        (40, 0.45),
+        (40, 0.65),
+        (60, 0.40),
+        (60, 0.60),
+        (80, 0.45),
+        (80, 0.70),
+        (100, 0.50),
+        (100, 0.75),
+    ]:
+        G = _hub_er(N, ratio, seed=child_seed())
         entries.append({
             "G": G,
             "has_hub": True,
-            "graph_type": f"hub_er_ratio{ratio}",
-            "N": 50,
+            "graph_type": f"hub_er_N{N}_ratio{ratio}",
+            "N": N,
         })
 
     # 双 hub 图
-    G = _double_hub(60, hub_degree=20, seed=child(1))
-    entries.append({
-        "G": G,
-        "has_hub": True,
-        "graph_type": "double_hub_N60",
-        "N": 60,
-    })
+    for N, hub_degree in [(50, 18), (70, 25), (100, 35), (140, 50)]:
+        G = _double_hub(N, hub_degree=hub_degree, seed=child_seed())
+        entries.append({
+            "G": G,
+            "has_hub": True,
+            "graph_type": f"double_hub_N{N}_d{hub_degree}",
+            "N": N,
+        })
+
+    # 明显有中心的 BA 图：BA 背景上额外注入强 hub
+    for N, m, ratio in [(60, 2, 0.45), (100, 2, 0.50), (140, 3, 0.55)]:
+        G = _ba_with_explicit_hub(N, m, ratio, seed=child_seed())
+        entries.append({
+            "G": G,
+            "has_hub": True,
+            "graph_type": f"ba_explicit_hub_N{N}_m{m}_ratio{ratio}",
+            "N": N,
+        })
 
     # ── 负例：无中心节点 ──────────────────────────
     # ER 随机图（均匀随机）
-    for N, p in [(50, 0.08), (100, 0.06)]:
-        G = nx.erdos_renyi_graph(N, p, seed=child(2))
+    for N, p in [
+        (40, 0.12),
+        (50, 0.10),
+        (60, 0.09),
+        (80, 0.075),
+        (80, 0.12),
+        (100, 0.06),
+        (120, 0.055),
+        (120, 0.08),
+        (150, 0.045),
+        (200, 0.035),
+    ]:
+        G = nx.erdos_renyi_graph(N, p, seed=child_seed())
         entries.append({
             "G": G,
             "has_hub": False,
@@ -120,22 +177,23 @@ def make_benchmark_graphs(seed: int = 42) -> list[dict]:
         })
 
     # 规则图（所有节点度相同，最强负例）
-    for N, d in [(50, 4), (100, 6)]:
-        G = nx.random_regular_graph(d, N, seed=child(3))
+    for N, d in [
+        (40, 4),
+        (50, 6),
+        (60, 4),
+        (80, 6),
+        (100, 4),
+        (100, 8),
+        (120, 6),
+        (150, 4),
+        (200, 6),
+        (240, 8),
+    ]:
+        G = nx.random_regular_graph(d, N, seed=child_seed())
         entries.append({
             "G": G,
             "has_hub": False,
             "graph_type": f"regular_N{N}_d{d}",
-            "N": N,
-        })
-
-    # BA 无标度图（有轻微幂律但无极端 hub，边界情况）
-    for N, m in [(50, 2), (100, 3)]:
-        G = nx.barabasi_albert_graph(N, m, seed=child(4))
-        entries.append({
-            "G": G,
-            "has_hub": False,
-            "graph_type": f"ba_N{N}_m{m}",
             "N": N,
         })
 
@@ -166,11 +224,13 @@ def run_one(
         rows.append({
             "graph_type": entry["graph_type"],
             "N":          entry["N"],
+            "M":          entry["G"].number_of_edges(),
             "has_hub":    entry["has_hub"],
             "metric":     row["metric"],
             "observed":   row["observed"],
             "p_value":    row["p_value"],
             "reject_H0":  row["reject_H0"],
+            "conclusion": row["conclusion"],
         })
     return rows
 
@@ -184,6 +244,7 @@ def evaluate(
     model: str = "hidden",
     alpha: float = 0.05,
     seed: int = 42,
+    verbose: bool = False,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """
     对所有合成图运行检验，计算每个指标的 precision / recall / F1。
@@ -199,7 +260,8 @@ def evaluate(
 
     all_rows = []
     for i, entry in enumerate(graphs):
-        print(f"  [{i+1}/{len(graphs)}] {entry['graph_type']} (has_hub={entry['has_hub']})")
+        if verbose:
+            print(f"  [{i+1}/{len(graphs)}] {entry['graph_type']} (has_hub={entry['has_hub']})")
         rows = run_one(entry, n_samples=n_samples, model=model, alpha=alpha,
                        seed=child_seeds[i])
         all_rows.extend(rows)
@@ -238,16 +300,23 @@ def evaluate(
 # ─────────────────────────────────────────────
 
 if __name__ == "__main__":
-    print("=== 构造合成图并运行检验 ===\n")
-    summary, detail = evaluate(n_samples=500, model="hidden", alpha=0.05, seed=49)
+    n_samples = 500
+    model = "gnm"
+    alpha = 0.05
+    seed = 551
 
-    print("\n=== 每指标检测能力汇总 ===")
+    summary, detail = evaluate(n_samples=n_samples, model=model, alpha=alpha, seed=seed)
+
+    n_graphs = detail["graph_type"].nunique()
+    n_positive = detail.loc[detail["has_hub"] == True, "graph_type"].nunique()
+    n_negative = detail.loc[detail["has_hub"] == False, "graph_type"].nunique()
+    print(
+        f"Benchmark：graphs={n_graphs}, positives={n_positive}, negatives={n_negative}, "
+        f"model={model}, n_samples={n_samples}, alpha={alpha}"
+    )
+    print()
+
     print(summary.to_string(index=False))
 
-    print("\n=== 每张图明细（pivot） ===")
-    pivot = detail.pivot_table(
-        index=["graph_type", "has_hub"],
-        columns="metric",
-        values="reject_H0",
-    ).astype(object)
-    print(pivot.to_string())
+    print()
+    print(detail.to_string(index=False))

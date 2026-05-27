@@ -113,16 +113,16 @@ def main(n_samples: int = 500, model: str = "hidden", alpha: float = 0.05, seed:
             all_rows.append({"network": name, **row.to_dict()})
 
     # ── 汇总：各网络被多少指标判定为有中心 ──
-    print(f"\n{'='*60}")
-    print("汇总：各网络被判定为「存在中心节点」的指标数")
-    summary_df = (
-        pd.DataFrame(all_rows)
-        .groupby("network")["reject_H0"]
-        .agg(total="count", n_reject="sum")
-        .assign(ratio=lambda df: (df["n_reject"] / df["total"]).map("{:.0%}".format))
-        .reset_index()
-    )
-    print(summary_df.to_string(index=False))
+    # print(f"\n{'='*60}")
+    # print("汇总：各网络被判定为「存在中心节点」的指标数")
+    # summary_df = (
+    #     pd.DataFrame(all_rows)
+    #     .groupby("network")["reject_H0"]
+    #     .agg(total="count", n_reject="sum")
+    #     .assign(ratio=lambda df: (df["n_reject"] / df["total"]).map("{:.0%}".format))
+    #     .reset_index()
+    # )
+    # print(summary_df.to_string(index=False))
 
 
 if __name__ == "__main__":

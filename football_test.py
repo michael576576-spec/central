@@ -127,7 +127,11 @@ def plot_diagnostic(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Diagnose football.txt hub-test p-value.")
-    parser.add_argument("--model", default="gnm", choices=["gnm", "gnp", "hidden", "configuration"])
+    parser.add_argument(
+        "--model",
+        default="gnm",
+        choices=["gnm", "gnp", "hidden", "configuration", "configuration_fast"],
+    )
     parser.add_argument("--n-samples", type=int, default=500)
     parser.add_argument("--seed", type=int, default=421)
     parser.add_argument("--alpha", type=float, default=0.05)

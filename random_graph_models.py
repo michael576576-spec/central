@@ -2,7 +2,7 @@
 随机图模型实现
 基于 NetworkX 内置函数，提供以下模型：
   ER 模型   : gnm / gnp
-  配置模型  : configuration（度序列严格保持）
+  配置模型  : configuration（伪图配置模型转简单图，近似保留度分布）
   隐参数模型: hidden（Chung-Lu，度序列期望保持）
 """
 
@@ -54,7 +54,7 @@ def er_gnp(N: int, p: float, seed: int | None = None) -> nx.Graph:
 
 
 # ─────────────────────────────────────────────
-# 2. 配置模型（度序列严格相等）
+# 2. 配置模型（伪图转简单图，近似保留度分布）
 # ─────────────────────────────────────────────
 
 def configuration_model(
@@ -63,14 +63,42 @@ def configuration_model(
     Q: int = 10,
 ) -> nx.Graph:
     """
-    配置模型：基于原始图的度序列，通过 NetworkX 内置 double_edge_swap
-    进行 Q*M 次 Markov 链互换，返回度序列严格相同的简单图。
+    配置模型：基于原始图的度序列，使用 NetworkX configuration_model
+    生成允许自环和重边的伪图，然后转成简单图并去除自环。
+
+    这个版本速度较快，但转简单图会合并重边、删除自环，因此节点度
+    不再保证与原图严格相同，只是近似保留原始度分布。
 
     Parameters
     ----------
-    G_original : 原始无向简单图
-    seed       : 随机种子（传给 nx.double_edge_swap）
-    Q          : 每条边平均互换次数，默认 10
+    G_original : 原始无向图
+    seed       : 随机种子（传给 nx.configuration_model）
+    Q          : 保留该参数以兼容旧调用；当前实现不使用
+    """
+    nodes = list(G_original.nodes())
+    deg_seq = [G_original.degree(n) for n in nodes]
+
+    G_multi = nx.configuration_model(deg_seq, seed=seed)
+    G_simple = _to_simple(G_multi)
+
+    mapping = dict(enumerate(nodes))
+    return nx.relabel_nodes(G_simple, mapping)
+
+
+def configuration_model_fast(
+    G_original: nx.Graph,
+    seed: int | None = None,
+    Q: int = 3,
+    max_tries_per_swap: int = 5,
+) -> nx.Graph:
+    """
+    Faster exact-degree simple-graph configuration model.
+
+    This keeps the same semantics as configuration_model: start from the
+    original simple graph and randomize it with degree-preserving double-edge
+    swaps. The difference is a smaller default swap budget and a tighter
+    max_tries cap, which avoids spending a long time on degree sequences with
+    very few legal swaps.
     """
     G = G_original.copy()
     M = G.number_of_edges()
@@ -81,9 +109,13 @@ def configuration_model(
     try:
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            nx.double_edge_swap(G, nswap=nswap, max_tries=nswap * 20, seed=seed)
+            nx.double_edge_swap(
+                G,
+                nswap=nswap,
+                max_tries=nswap * max_tries_per_swap,
+                seed=seed,
+            )
     except nx.NetworkXAlgorithmError:
-        # 结构过于特殊（如星形图）导致无法完成足够次数的有效互换，返回尽力互换后的图
         pass
     return G
 
@@ -123,7 +155,7 @@ def null_model_from_graph(
     model      : 模型类型，可选：
                    'gnm'           — G(N,M) ER 模型
                    'gnp'           — G(N,p) ER 模型
-                   'configuration' — 配置模型（度序列严格保持）
+                   'configuration' — 配置模型（近似保留度分布）
                    'hidden'        — Chung-Lu 隐参数模型（默认）
     seed       : 随机种子
     """
@@ -140,13 +172,16 @@ def null_model_from_graph(
     elif model == "configuration":
         return configuration_model(G_original, seed=seed)
 
+    elif model == "configuration_fast":
+        return configuration_model_fast(G_original, seed=seed)
+
     elif model == "hidden":
         return hidden_variable_model(deg_seq, seed=seed)
 
     else:
         raise ValueError(
             f"未知模型: {model!r}，"
-            "可选 'gnm'、'gnp'、'configuration'、'hidden'"
+            "可选 'gnm'、'gnp'、'configuration'、'configuration_fast'、'hidden'"
         )
 
 
@@ -160,7 +195,7 @@ if __name__ == "__main__":
     print(f"原始图：N={p['N']}, M={p['M']}, mean_k={p['mean_k']:.2f}")
     print()
 
-    models = ["gnm", "gnp", "configuration", "hidden"]
+    models = ["gnm", "gnp", "configuration", "configuration_fast", "hidden"]
     for m in models:
         G_rand = null_model_from_graph(G, model=m, seed=42)
         print(f"{m:15s}: N={G_rand.number_of_nodes()}, M={G_rand.number_of_edges()}")

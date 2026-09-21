@@ -26,6 +26,13 @@ from generate_gnm_components import (
 )
 
 
+# The figure is inserted at a smaller width in the paper, so these labels
+# need to be larger than the surrounding figure annotations to remain readable.
+STAT_LABEL_FONTSIZE = 15
+TICK_LABEL_FONTSIZE = 15
+TITLE_FONTSIZE = 15
+
+
 def draw_graph(ax: plt.Axes, graph: nx.Graph, seed: int, highlight_hub: bool = False) -> None:
     pos = nx.spring_layout(graph, seed=seed, k=0.75, iterations=150)
     degree = np.asarray([graph.degree[node] for node in graph], dtype=float)
@@ -43,10 +50,16 @@ def draw_graph(ax: plt.Axes, graph: nx.Graph, seed: int, highlight_hub: bool = F
     ax.set_axis_off()
 
 
-def draw_histogram(ax: plt.Axes, observed: float, null_values: list[float], p_val: float) -> None:
+def draw_histogram(
+    ax: plt.Axes,
+    observed: float,
+    null_values: list[float],
+    p_val: float,
+    bin_edges: np.ndarray,
+) -> None:
     values = np.asarray(null_values, dtype=float)
     values = values[~np.isnan(values)]
-    ax.hist(values, bins=20, color="#B8B8B8", edgecolor="white", linewidth=0.5)
+    ax.hist(values, bins=bin_edges, color="#B8B8B8", edgecolor="white", linewidth=0.5)
     xmin, xmax = ax.get_xlim()
     if observed > xmax:
         ax.set_xlim(xmin, observed + 0.08 * (observed - xmin))
@@ -56,19 +69,20 @@ def draw_histogram(ax: plt.Axes, observed: float, null_values: list[float], p_va
     ax.annotate(
         rf"$\rho$ = {observed:.2f}", xy=(observed, ymax * 0.08), xycoords="data",
         xytext=(0.72, 0.82), textcoords="axes fraction", color="#D62728",
-        ha="left", va="center", fontsize=11,
+        ha="left", va="center", fontsize=STAT_LABEL_FONTSIZE,
         arrowprops={"arrowstyle": "-|>", "color": "#D62728", "lw": 1.6},
     )
-    p_label = "p < 0.001" if p_val < 0.001 else f"p = {p_val:.3f}"
+    p_label = r"$p$-value < 0.001" if p_val < 0.001 else rf"$p$-value = {p_val:.3f}"
     ax.text(
-        0.03,
-        0.93,
+        0.72,
+        0.98,
         p_label,
         transform=ax.transAxes,
-        fontsize=11,
+        fontsize=STAT_LABEL_FONTSIZE,
         va="top",
         bbox={"facecolor": "white", "edgecolor": "none", "alpha": 0.9, "pad": 2.5},
     )
+    ax.tick_params(axis="x", labelsize=TICK_LABEL_FONTSIZE, pad=3)
     ax.set_xlabel("")
     ax.set_ylabel("")
     ax.set_yticks([])
@@ -110,13 +124,31 @@ def build_figure(output: Path, n_samples: int = 500, seed: int = 20260919) -> Pa
     middle_axes: list[list[plt.Axes]] = []
     right_axes: list[plt.Axes] = []
     histogram_values: list[float] = []
+    statistics: list[tuple[float, np.ndarray, float]] = []
 
-    for row, (graph, highlight) in enumerate(examples):
-        observed, null_records = sample_null_metrics(graph, n_samples=n_samples, model="gnm", seed=seed + row)
+    # Compute both null distributions first so the two histograms use exactly
+    # the same bin edges and therefore have identical bar widths.
+    for row, (graph, _highlight) in enumerate(examples):
+        observed, null_records = sample_null_metrics(
+            graph, n_samples=n_samples, model="gnm", seed=seed + row
+        )
         observed_value = float(observed["spectral_radius"])
         null_values = null_records["spectral_radius"]
         p_val = p_value(observed_value, null_values)
+        statistics.append((observed_value, null_values, p_val))
         histogram_values.extend([observed_value, *null_values])
+
+    finite_values = np.asarray(histogram_values, dtype=float)
+    finite_values = finite_values[np.isfinite(finite_values)]
+    x_min = float(np.min(finite_values))
+    x_max = float(np.max(finite_values))
+    x_margin = max(0.06, 0.05 * (x_max - x_min))
+    shared_min = x_min - x_margin
+    shared_max = x_max + x_margin
+    shared_bin_edges = np.linspace(shared_min, shared_max, 21)
+
+    for row, (graph, highlight) in enumerate(examples):
+        observed_value, null_values, p_val = statistics[row]
 
         left = fig.add_subplot(outer[row, 0])
         draw_graph(left, graph, seed=12, highlight_hub=False)
@@ -125,7 +157,7 @@ def build_figure(output: Path, n_samples: int = 500, seed: int = 20260919) -> Pa
             0.94,
             rf"$\rho$ = {observed_value:.2f}",
             transform=left.transAxes,
-            fontsize=11,
+            fontsize=STAT_LABEL_FONTSIZE,
             color="#303846",
         )
         left_axes.append(left)
@@ -143,19 +175,12 @@ def build_figure(output: Path, n_samples: int = 500, seed: int = 20260919) -> Pa
         middle_axes.append(middle_group)
 
         right = fig.add_subplot(outer[row, 2])
-        draw_histogram(right, observed_value, null_values, p_val)
+        draw_histogram(right, observed_value, null_values, p_val, shared_bin_edges)
         right_axes.append(right)
 
     # Use one shared x-range and tick grid for both null distributions so the
     # two rows are directly comparable.  The range includes both simulated
     # values and observed statistics, with a small visual margin.
-    finite_values = np.asarray(histogram_values, dtype=float)
-    finite_values = finite_values[np.isfinite(finite_values)]
-    x_min = float(np.min(finite_values))
-    x_max = float(np.max(finite_values))
-    x_margin = max(0.06, 0.05 * (x_max - x_min))
-    shared_min = x_min - x_margin
-    shared_max = x_max + x_margin
     tick_start = np.floor(shared_min * 2) / 2
     tick_stop = np.ceil(shared_max * 2) / 2
     shared_ticks = np.arange(tick_start, tick_stop + 0.25, 0.5)
@@ -187,7 +212,7 @@ def build_figure(output: Path, n_samples: int = 500, seed: int = 20260919) -> Pa
         "Compute spectral radius",
         ha="center",
         va="center",
-        fontsize=12,
+        fontsize=TITLE_FONTSIZE,
         weight="bold",
     )
     fig.text(
@@ -196,7 +221,7 @@ def build_figure(output: Path, n_samples: int = 500, seed: int = 20260919) -> Pa
         "Fit null model and simulate\nunder null",
         ha="center",
         va="center",
-        fontsize=11.5,
+        fontsize=TITLE_FONTSIZE,
         weight="bold",
         linespacing=1.05,
     )
@@ -206,7 +231,7 @@ def build_figure(output: Path, n_samples: int = 500, seed: int = 20260919) -> Pa
         "Compare spectral radius to null",
         ha="center",
         va="center",
-        fontsize=12,
+        fontsize=TITLE_FONTSIZE,
         weight="bold",
     )
 

@@ -424,21 +424,25 @@ def run_hub_weight_sweep_experiment(
             hub_degree_mean=("hub_degree_mean", "mean"),
         )
     )
+    # Compute the Spearman coefficient from the same aggregated values used
+    # in the p-value curves: one mean p-value for each (hub_weight, n_hubs)
+    # condition. This keeps the correlation table consistent with the plot.
+    spearman_rows = []
+    for hub_weight, group in summary_df.groupby("hub_weight"):
+        rho = group[["n_hubs", "p_mean"]].corr(method="spearman").iloc[0, 1]
+        spearman_rows.append({"hub_weight": hub_weight, "spearman": rho})
+    spearman_df = pd.DataFrame(spearman_rows)
+
     weight_summary_df = (
         detail_df
         .groupby("hub_weight", as_index=False)
         .agg(
-            spearman=(
-                "p_value",
-                lambda s: detail_df.loc[s.index, ["n_hubs", "p_value"]]
-                .corr(method="spearman")
-                .iloc[0, 1],
-            ),
             p_mean=("p_value", "mean"),
             p_median=("p_value", "median"),
             p_min=("p_value", "min"),
             p_max=("p_value", "max"),
         )
+        .merge(spearman_df, on="hub_weight", how="left")
     )
 
     detail_path = output_dir / "hub_weight_sweep_detail.csv"

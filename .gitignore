@@ -1,6 +1,8 @@
 /paper
 /experiment_results
 /__pycache__
-/plot_real_null_model_upset.py
-/plot_gnm_method_figure.py
-/plot_hub_weight_sweep_p_mean.py
+plot_real_null_model_upset.py
+plot_gnm_method_figure.py
+plot_hub_weight_sweep_p_mean.py
+generate_gnm_components.py
+refresh_add_one_results.py

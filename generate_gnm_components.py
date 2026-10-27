@@ -34,7 +34,7 @@ import matplotlib.pyplot as plt
 import networkx as nx
 import numpy as np
 
-from centrality_test import compute_spectral_radius, sample_null_metrics
+from centrality_test import compute_spectral_radius, empirical_p_value, sample_null_metrics
 
 
 N_NODES = 30
@@ -78,11 +78,7 @@ def connected_gnm_graph(n: int, m: int, seed: int | None = None) -> nx.Graph:
 
 
 def p_value(observed: float, null_values: list[float]) -> float:
-    values = np.asarray(null_values, dtype=float)
-    values = values[~np.isnan(values)]
-    if values.size == 0 or np.isnan(observed):
-        return float("nan")
-    return float(np.mean(values >= observed))
+    return empirical_p_value(observed, null_values)
 
 
 def select_mid_null_graph(

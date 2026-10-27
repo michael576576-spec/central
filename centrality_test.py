@@ -102,6 +102,15 @@ def sample_null_metrics(
     return observed, null_records
 
 
+def empirical_p_value(observed: float, null_values: list[float] | np.ndarray) -> float:
+    """One-sided Monte Carlo p-value with the observed statistic included."""
+    values = np.asarray(null_values, dtype=float)
+    valid = values[~np.isnan(values)]
+    if len(valid) == 0 or np.isnan(observed):
+        return float("nan")
+    return float((np.sum(valid >= observed) + 1) / (len(valid) + 1))
+
+
 # ─────────────────────────────────────────────
 # 可视化
 # ─────────────────────────────────────────────
@@ -163,11 +172,7 @@ def plot_null_distribution(
     obs_val = observed[metric]
     null_arr = np.array(null_records[metric], dtype=float)
     valid = null_arr[~np.isnan(null_arr)]
-    p_val = (
-        float(np.sum(valid >= obs_val) / len(valid))
-        if len(valid) > 0 and not np.isnan(obs_val)
-        else float("nan")
-    )
+    p_val = empirical_p_value(obs_val, valid)
 
     fig, ax = plt.subplots(figsize=(8, 5), dpi=150)
     ax.hist(valid, bins=bins, color="#4C78A8", alpha=0.75, edgecolor="white")
@@ -240,13 +245,13 @@ def test_hub(
                 p_val = float("nan")
                 reject = False
             else:
-                p_val = float(np.sum(valid >= obs_val) / len(valid))
+                p_val = empirical_p_value(obs_val, valid)
                 reject = p_val < alpha
 
         rows.append({
             "metric":     metric,
             "observed":   round(obs_val, 6) if not np.isnan(obs_val) else float("nan"),
-            "p_value":    round(p_val, 4) if not np.isnan(p_val) else float("nan"),
+            "p_value":    p_val,
             "reject_H0":  reject,
             "conclusion": "存在中心节点" if reject else "无显著中心节点",
         })

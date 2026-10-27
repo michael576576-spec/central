@@ -1,9 +1,10 @@
 """
-随机图模型实现
-基于 NetworkX 内置函数，提供以下模型：
-  ER 模型   : gnm / gnp
-  配置模型  : configuration（伪图配置模型转简单图，近似保留度分布）
-  隐参数模型: hidden（Chung-Lu，度序列期望保持）
+Random graph models built on NetworkX:
+  ER models          : gnm / gnp
+  Configuration base : pseudograph converted to a simple graph; degrees
+                       are preserved approximately.
+  Configuration swap : degree-preserving double-edge swaps.
+  Hidden-variable    : Chung-Lu; expected degrees follow the input sequence.
 """
 
 from __future__ import annotations
@@ -14,11 +15,11 @@ import networkx as nx
 
 
 # ─────────────────────────────────────────────
-# 辅助：从图中提取常用参数
+# Helpers: extract graph parameters
 # ─────────────────────────────────────────────
 
 def graph_params(G: nx.Graph) -> dict:
-    """返回图的基本参数字典，供各生成函数使用。"""
+    """Return graph parameters used by the generators."""
     N = G.number_of_nodes()
     M = G.number_of_edges()
     max_edges = N * (N - 1) / 2
@@ -33,28 +34,28 @@ def graph_params(G: nx.Graph) -> dict:
 
 
 def _to_simple(G: nx.Graph) -> nx.Graph:
-    """多重图转简单图（去自环和重边），返回新 Graph。"""
+    """Convert a multigraph to a simple graph without loops or parallel edges."""
     H = nx.Graph(G)
     H.remove_edges_from(nx.selfloop_edges(H))
     return H
 
 
 # ─────────────────────────────────────────────
-# 1. ER 模型
+# 1. ER models
 # ─────────────────────────────────────────────
 
 def er_gnm(N: int, M: int, seed: int | None = None) -> nx.Graph:
-    """G(N, M)：从 N 个节点中随机选取 M 条不重复边。"""
+    """Sample M distinct edges among N nodes (G(N, M))."""
     return nx.gnm_random_graph(N, M, seed=seed)
 
 
 def er_gnp(N: int, p: float, seed: int | None = None) -> nx.Graph:
-    """G(N, p)：每对节点以概率 p 独立连边。"""
+    """Connect each pair independently with probability p (G(N, p))."""
     return nx.erdos_renyi_graph(N, p, seed=seed)
 
 
 # ─────────────────────────────────────────────
-# 2. 配置模型（伪图转简单图，近似保留度分布）
+# 2. Configuration models
 # ─────────────────────────────────────────────
 
 def configuration_model(
@@ -63,17 +64,17 @@ def configuration_model(
     Q: int = 10,
 ) -> nx.Graph:
     """
-    配置模型：基于原始图的度序列，使用 NetworkX configuration_model
-    生成允许自环和重边的伪图，然后转成简单图并去除自环。
+    Generate a pseudograph from the original degree sequence with NetworkX,
+    then remove self-loops and merge parallel edges to obtain a simple graph.
 
-    这个版本速度较快，但转简单图会合并重边、删除自环，因此节点度
-    不再保证与原图严格相同，只是近似保留原始度分布。
+    Removing loops and parallel edges changes node degrees, so this model
+    preserves the original degree distribution only approximately.
 
     Parameters
     ----------
-    G_original : 原始无向图
-    seed       : 随机种子（传给 nx.configuration_model）
-    Q          : 保留该参数以兼容旧调用；当前实现不使用
+    G_original : Original undirected graph.
+    seed       : Random seed passed to nx.configuration_model.
+    Q          : Kept for compatibility with old calls; currently unused.
     """
     nodes = list(G_original.nodes())
     deg_seq = [G_original.degree(n) for n in nodes]
@@ -121,7 +122,7 @@ def configuration_model_fast(
 
 
 # ─────────────────────────────────────────────
-# 3. 隐参数模型 / Chung-Lu（度序列期望相等）
+# 3. Hidden-variable / Chung-Lu model
 # ─────────────────────────────────────────────
 
 def hidden_variable_model(
@@ -129,8 +130,8 @@ def hidden_variable_model(
     seed: int | None = None,
 ) -> nx.Graph:
     """
-    Chung-Lu 隐参数模型：节点 i,j 连边概率 p_ij = w_i*w_j / Σw，
-    保证度序列期望等于输入序列。使用 nx.expected_degree_graph 实现。
+    Chung-Lu hidden-variable model with p_ij = w_i*w_j / sum(w).
+    Expected degrees follow the input sequence. Uses nx.expected_degree_graph.
     """
     w = [float(k) for k in degree_sequence]
     G = nx.expected_degree_graph(w, seed=seed, selfloops=False)
@@ -138,7 +139,7 @@ def hidden_variable_model(
 
 
 # ─────────────────────────────────────────────
-# 顶层工具：从已有图提取参数并生成零模型
+# Top-level helper: derive parameters and generate a null graph
 # ─────────────────────────────────────────────
 
 def null_model_from_graph(
@@ -147,17 +148,18 @@ def null_model_from_graph(
     seed: int | None = None,
 ) -> nx.Graph:
     """
-    根据原始图 G 自动提取参数，生成对应零模型随机图。
+    Derive parameters from G and generate a null-model graph.
 
     Parameters
     ----------
-    G_original : 原始无向图
-    model      : 模型类型，可选：
-                   'gnm'           — G(N,M) ER 模型
-                   'gnp'           — G(N,p) ER 模型
-                   'configuration' — 配置模型（近似保留度分布）
-                   'hidden'        — Chung-Lu 隐参数模型（默认）
-    seed       : 随机种子
+    G_original : Original undirected graph.
+    model      : One of:
+                 'gnm'                - G(N, M) ER model.
+                 'gnp'                - G(N, p) ER model.
+                 'configuration-base' - Approximately preserve degrees.
+                 'configuration-swap' - Preserve degrees with edge swaps.
+                 'hidden'             - Chung-Lu model (default).
+    seed       : Random seed.
     """
     params = graph_params(G_original)
     N, M, p = params["N"], params["M"], params["p"]
@@ -169,10 +171,10 @@ def null_model_from_graph(
     elif model == "gnp":
         return er_gnp(N, p, seed=seed)
 
-    elif model == "configuration":
+    elif model == "configuration-base":
         return configuration_model(G_original, seed=seed)
 
-    elif model == "configuration_fast":
+    elif model == "configuration-swap":
         return configuration_model_fast(G_original, seed=seed)
 
     elif model == "hidden":
@@ -181,12 +183,12 @@ def null_model_from_graph(
     else:
         raise ValueError(
             f"未知模型: {model!r}，"
-            "可选 'gnm'、'gnp'、'configuration'、'configuration_fast'、'hidden'"
+            "可选 'gnm'、'gnp'、'configuration-base'、'configuration-swap'、'hidden'"
         )
 
 
 # ─────────────────────────────────────────────
-# 示例演示
+# Example
 # ─────────────────────────────────────────────
 
 if __name__ == "__main__":
@@ -195,7 +197,7 @@ if __name__ == "__main__":
     print(f"原始图：N={p['N']}, M={p['M']}, mean_k={p['mean_k']:.2f}")
     print()
 
-    models = ["gnm", "gnp", "configuration", "configuration_fast", "hidden"]
+    models = ["gnm", "gnp", "configuration-base", "configuration-swap", "hidden"]
     for m in models:
         G_rand = null_model_from_graph(G, model=m, seed=42)
         print(f"{m:15s}: N={G_rand.number_of_nodes()}, M={G_rand.number_of_edges()}")

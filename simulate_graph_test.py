@@ -1,8 +1,9 @@
 """
-中心节点检测方法的检测能力评估
+Evaluate the detection power of the hub-structure test.
 
-用已知答案的合成图（正例 = 有中心节点，负例 = 无中心节点）评估
-centrality_test.test_hub 中每个指标的 precision / recall / F1。
+Use synthetic graphs with known labels (positive = hub structure,
+negative = no hub structure) to assess precision, recall, and F1 for
+the metrics in centrality_test.test_hub.
 """
 
 from __future__ import annotations
@@ -16,14 +17,14 @@ from centrality_test import test_hub
 
 
 # ─────────────────────────────────────────────
-# 合成图构造
+# Build synthetic graphs
 # ─────────────────────────────────────────────
 
 def _hub_er(n_total: int, hub_degree_ratio: float, seed: int) -> nx.Graph:
     """
-    hub + ER 背景噪声图。
-    hub 节点 0 连接 floor(n_total * hub_degree_ratio) 个随机节点，
-    其余节点之间按 p = 2*M_background / (N*(N-1)) 随机连边。
+    Graph with one hub and an ER background.
+    Node 0 connects to floor(n_total * hub_degree_ratio) random nodes.
+    Other pairs connect with p = 2*M_background / (N*(N-1)).
     """
     rng = np.random.default_rng(seed)
     G = nx.Graph()
@@ -34,7 +35,7 @@ def _hub_er(n_total: int, hub_degree_ratio: float, seed: int) -> nx.Graph:
     for v in hub_neighbors:
         G.add_edge(0, v)
 
-    # 背景边：密度约等于 hub 边密度的一半
+    # Background edge density is about half the hub-edge density.
     p_bg = n_hub_edges / (n_total * (n_total - 1) / 2) * 0.5
     for u in range(1, n_total):
         for v in range(u + 1, n_total):
@@ -45,7 +46,7 @@ def _hub_er(n_total: int, hub_degree_ratio: float, seed: int) -> nx.Graph:
 
 def _double_hub(n_total: int, hub_degree: int, seed: int) -> nx.Graph:
     """
-    两个 hub 节点（0, 1）各连接 hub_degree 个不同叶子节点。
+    Two hubs (nodes 0 and 1), each connected to hub_degree distinct leaves.
     """
     rng = np.random.default_rng(seed)
     G = nx.Graph()
@@ -68,10 +69,10 @@ def _ba_with_explicit_hub(
     seed: int,
 ) -> nx.Graph:
     """
-    BA 背景 + 显式强 hub。
+    BA background with an explicit strong hub.
 
-    普通 BA 图容易落在边界区域；这里先生成一个 BA 背景网络，再强制
-    节点 0 连接到大比例节点，使其成为明确正例。
+    A plain BA graph can be borderline. Add edges from node 0 to a large
+    share of nodes to make the result a clear positive example.
     """
     rng = np.random.default_rng(seed)
     G = nx.barabasi_albert_graph(n_total, m, seed=seed)
@@ -89,14 +90,14 @@ def _ba_with_explicit_hub(
 
 def make_benchmark_graphs(seed: int = 42) -> list[dict]:
     """
-    构造一批已知答案的合成图。
+    Build synthetic graphs with known hub-structure labels.
 
     Returns
     -------
-    list of dict，每项包含：
+    List of dicts, each containing:
         G           : nx.Graph
-        has_hub     : bool（True = 正例，False = 负例）
-        graph_type  : str（描述性标签）
+        has_hub     : bool (True = positive, False = negative)
+        graph_type  : str (descriptive label)
         N           : int
     """
     rng = np.random.default_rng(seed)
@@ -105,8 +106,8 @@ def make_benchmark_graphs(seed: int = 42) -> list[dict]:
     def child_seed():
         return int(rng.integers(0, 2**31))
 
-    # ── 正例：有中心节点 ──────────────────────────
-    # 纯星形图（极端 hub）
+    # Positive examples: graphs with hub structure.
+    # Star graph with an extreme hub.
     for n_leaves in [19, 29, 49, 79, 119]:
         entries.append({
             "G": nx.star_graph(n_leaves),
@@ -115,7 +116,7 @@ def make_benchmark_graphs(seed: int = 42) -> list[dict]:
             "N": n_leaves + 1,
         })
 
-    # hub + ER 背景噪声
+    # Hub with an ER background.
     for N, ratio in [
         (40, 0.45),
         (40, 0.65),
@@ -134,7 +135,7 @@ def make_benchmark_graphs(seed: int = 42) -> list[dict]:
             "N": N,
         })
 
-    # 双 hub 图
+    # Two-hub graph.
     for N, hub_degree in [(50, 18), (70, 25), (100, 35), (140, 50)]:
         G = _double_hub(N, hub_degree=hub_degree, seed=child_seed())
         entries.append({
@@ -144,7 +145,7 @@ def make_benchmark_graphs(seed: int = 42) -> list[dict]:
             "N": N,
         })
 
-    # 明显有中心的 BA 图：BA 背景上额外注入强 hub
+    # BA graph with a strong hub added to the background.
     for N, m, ratio in [(60, 2, 0.45), (100, 2, 0.50), (140, 3, 0.55)]:
         G = _ba_with_explicit_hub(N, m, ratio, seed=child_seed())
         entries.append({
@@ -154,8 +155,8 @@ def make_benchmark_graphs(seed: int = 42) -> list[dict]:
             "N": N,
         })
 
-    # ── 负例：无中心节点 ──────────────────────────
-    # ER 随机图（均匀随机）
+    # Negative examples: graphs without hub structure.
+    # ER random graph with uniform edge probabilities.
     for N, p in [
         (40, 0.12),
         (50, 0.10),
@@ -176,7 +177,7 @@ def make_benchmark_graphs(seed: int = 42) -> list[dict]:
             "N": N,
         })
 
-    # 规则图（所有节点度相同，最强负例）
+    # Regular graph: all nodes have equal degree, a clear negative example.
     for N, d in [
         (40, 4),
         (50, 6),
@@ -201,7 +202,7 @@ def make_benchmark_graphs(seed: int = 42) -> list[dict]:
 
 
 # ─────────────────────────────────────────────
-# 单图检验
+# Test one graph
 # ─────────────────────────────────────────────
 
 def run_one(
@@ -212,7 +213,7 @@ def run_one(
     seed: int,
 ) -> list[dict]:
     """
-    对单张图运行 test_hub，返回每个指标的检验结果行。
+    Run test_hub on one graph and return a row per metric.
     """
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
@@ -236,7 +237,7 @@ def run_one(
 
 
 # ─────────────────────────────────────────────
-# 汇总评估
+# Aggregate evaluation
 # ─────────────────────────────────────────────
 
 def evaluate(
@@ -247,12 +248,12 @@ def evaluate(
     verbose: bool = False,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """
-    对所有合成图运行检验，计算每个指标的 precision / recall / F1。
+    Test all synthetic graphs and calculate precision, recall, and F1.
 
     Returns
     -------
-    summary_df : 每指标汇总（TP/FP/TN/FN/precision/recall/F1）
-    detail_df  : 每张图 × 每指标的明细
+    summary_df : Per-metric TP, FP, TN, FN, precision, recall, and F1.
+    detail_df  : Per-graph, per-metric results.
     """
     graphs = make_benchmark_graphs(seed=seed)
     rng = np.random.default_rng(seed + 1)
@@ -268,7 +269,7 @@ def evaluate(
 
     detail_df = pd.DataFrame(all_rows)
 
-    # 计算 TP/FP/TN/FN
+    # Count true positives, false positives, true negatives, and false negatives.
     records = []
     for metric, grp in detail_df.groupby("metric"):
         tp = int(((grp["has_hub"] == True)  & (grp["reject_H0"] == True)).sum())
@@ -296,7 +297,7 @@ def evaluate(
 
 
 # ─────────────────────────────────────────────
-# 入口
+# Script entry point
 # ─────────────────────────────────────────────
 
 if __name__ == "__main__":

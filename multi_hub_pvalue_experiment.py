@@ -698,14 +698,15 @@ def plot_multi_hub_pvalues(
 
 
 if __name__ == "__main__":
+    n_nodes = 50
     run_hub_weight_sweep_experiment(
-        N=50,
+        N=n_nodes,
         M=100,
-        hub_counts=range(1, 51),
+        hub_counts=range(1, int(0.3 * n_nodes) + 1),
         seeds=range(42, 92),
         hub_weights=(1.5, 2.0, 3.0, 4.0, 6.0),
         null_samples=100,
         model="gnm",
-        output_dir=ROOT / "experiment_results" / "hub_weight_sweep_N50_M100_K1_50_gnm_50seed",
+        output_dir=ROOT / "experiment_results" / "hub_weight_sweep_N50_M100_K1_15_gnm_50seed",
         make_plot=True,
     )

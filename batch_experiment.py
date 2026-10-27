@@ -20,7 +20,7 @@ import simulate_graph_test
 
 ROOT = Path(__file__).resolve().parent
 DEFAULT_OUTPUT_DIR = ROOT / "experiment_results"
-DEFAULT_MODELS = ("gnm", "configuration", "hidden")
+DEFAULT_MODELS = ("gnm", "configuration-base", "configuration-swap", "hidden")
 DEFAULT_SAMPLE_COUNTS = (100, 500, 1000)
 DEFAULT_DATASETS = ("real", "simulated")
 
@@ -176,7 +176,7 @@ def run_model_sample_grid(
 
 
 if __name__ == "__main__":
-    paths = run_model_sample_grid(models=("configuration_fast",));
+    paths = run_model_sample_grid(models=DEFAULT_MODELS)
     for model, log_path in paths["logs"].items():
         print(f"{model} log saved: {log_path}")
     print(f"summary saved: {paths['summary_csv']}")

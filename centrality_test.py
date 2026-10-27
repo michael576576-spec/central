@@ -1,10 +1,11 @@
 """
-基于随机图置换检验的中心节点统计检验
+Statistical test for hub structure using random graph null models.
 
-流程：
-  1. 计算原始图的谱半径
-  2. 用零模型（默认隐参数模型）生成 n_samples 个随机图并计算谱半径
-  3. 单侧置换检验计算 p 值，判断原图是否存在显著中心节点
+Workflow:
+  1. Compute the spectral radius of the observed graph.
+  2. Generate n_samples null graphs (hidden-variable model by default)
+     and compute their spectral radii.
+  3. Calculate a one-sided Monte Carlo p-value for hub structure.
 """
 
 from __future__ import annotations
@@ -20,14 +21,15 @@ from random_graph_models import null_model_from_graph
 
 
 # ─────────────────────────────────────────────
-# 指标计算
+# Metric calculation
 # ─────────────────────────────────────────────
 
 def compute_spectral_radius(G: nx.Graph) -> float:
     """
-    返回无权邻接矩阵谱半径 λ₁。
+    Return the spectral radius λ₁ of the unweighted adjacency matrix.
 
-    对无向非负邻接矩阵，最大代数特征值即谱半径。空图返回 NaN。
+    For an undirected nonnegative adjacency matrix, the largest algebraic
+    eigenvalue is the spectral radius. Return NaN for an empty graph.
     """
     import scipy.sparse.linalg as spla
 
@@ -46,20 +48,20 @@ def compute_spectral_radius(G: nx.Graph) -> float:
 
 
 # ─────────────────────────────────────────────
-# 顶层组装：计算指标
+# Calculate graph metrics
 # ─────────────────────────────────────────────
 
 def compute_all_metrics(G: nx.Graph) -> dict[str, float]:
     """
-    计算原图或零模型图的指标。
+    Calculate metrics for an observed or null graph.
 
     Parameters
     ----------
-    G : 待计算的图
+    G : Graph to evaluate.
 
     Returns
     -------
-    dict，键为指标名，值为 float（可能为 NaN）
+    A dict mapping metric names to floats, which may be NaN.
     """
     return {
         "spectral_radius": compute_spectral_radius(G),
@@ -67,7 +69,7 @@ def compute_all_metrics(G: nx.Graph) -> dict[str, float]:
 
 
 # ─────────────────────────────────────────────
-# 零模型采样
+# Null-model sampling
 # ─────────────────────────────────────────────
 
 def sample_null_metrics(
@@ -77,12 +79,12 @@ def sample_null_metrics(
     seed: int | None = None,
 ) -> tuple[dict[str, float], dict[str, list[float]]]:
     """
-    计算原图指标，并采样零模型指标分布。
+    Calculate observed metrics and sample their null distributions.
 
     Returns
     -------
-    observed     : 原图指标
-    null_records : 零模型指标分布，键为指标名，值为长度 n_samples 的列表
+    observed     : Metrics of the observed graph.
+    null_records : Null samples for each metric, each with n_samples values.
     """
     observed = compute_all_metrics(G)
 
@@ -112,7 +114,7 @@ def empirical_p_value(observed: float, null_values: list[float] | np.ndarray) ->
 
 
 # ─────────────────────────────────────────────
-# 可视化
+# Visualization
 # ─────────────────────────────────────────────
 
 def plot_null_distribution(
@@ -126,22 +128,23 @@ def plot_null_distribution(
     show: bool = False,
 ) -> Path:
     """
-    绘制零模型指标分布直方图，并用竖线标出真实图指标值。
+    Plot a null-metric histogram with a line for the observed value.
 
     Parameters
     ----------
-    G           : 原始无向图
-    n_samples   : 零模型采样数量
-    model       : 零模型类型，'hidden'、'configuration'、'gnm'、'gnp'
-    seed        : 随机种子
-    metric      : 指标名，当前默认为 'spectral_radius'
-    bins        : 直方图分箱数量
-    output_path : 图片保存路径
-    show        : 是否弹出显示窗口
+    G           : Observed undirected graph.
+    n_samples   : Number of null-graph samples.
+    model       : Null model: 'hidden', 'configuration-base',
+                  'configuration-swap', 'gnm', or 'gnp'.
+    seed        : Random seed.
+    metric      : Metric name; defaults to 'spectral_radius'.
+    bins        : Number of histogram bins.
+    output_path : Path for the saved image.
+    show        : Whether to display the plot interactively.
 
     Returns
     -------
-    Path，保存后的图片路径
+    Path to the saved image.
     """
     import os
     import tempfile
@@ -199,7 +202,7 @@ def plot_null_distribution(
 
 
 # ─────────────────────────────────────────────
-# 主入口：置换检验
+# Main entry point: Monte Carlo test
 # ─────────────────────────────────────────────
 
 def test_hub(
@@ -210,19 +213,20 @@ def test_hub(
     seed: int | None = None,
 ) -> pd.DataFrame:
     """
-    基于谱半径的随机图置换检验，判断图 G 中是否存在显著中心节点。
+    Test whether G has significant hub structure using spectral radius.
 
     Parameters
     ----------
-    G         : 原始无向图（nx.Graph）
-    n_samples : 生成随机零模型图的数量
-    model     : 零模型类型，'hidden'（默认）、'configuration'、'gnm'、'gnp'
-    alpha     : 显著性水平，默认 0.05
-    seed      : 随机种子，None 则不固定
+    G         : Observed undirected graph (nx.Graph).
+    n_samples : Number of null graphs to generate.
+    model     : Null model: 'hidden' (default), 'configuration-base',
+                'configuration-swap', 'gnm', or 'gnp'.
+    alpha     : Significance level, default 0.05.
+    seed      : Random seed; None leaves the sequence unseeded.
 
     Returns
     -------
-    pd.DataFrame，列为 metric / observed / p_value / reject_H0 / conclusion
+    DataFrame with metric, observed, p_value, reject_H0, and conclusion.
     """
     observed, null_records = sample_null_metrics(
         G,
@@ -231,7 +235,7 @@ def test_hub(
         seed=seed,
     )
 
-    # 谱半径越大越像有中心节点：p = P(null >= observed)
+    # A larger spectral radius supports hub structure: p = P(null >= observed).
     rows = []
     for metric, obs_val in observed.items():
         null_arr = np.array(null_records[metric], dtype=float)
@@ -260,7 +264,7 @@ def test_hub(
 
 
 # ─────────────────────────────────────────────
-# 冒烟测试
+# Smoke test
 # ─────────────────────────────────────────────
 
 if __name__ == "__main__":

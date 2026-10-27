@@ -1,8 +1,8 @@
 """
-真实网络的中心节点检验
+Hub-structure tests on real networks.
 
-读取 network/ 目录下的边列表文件。每行前两列为一条无向边；
-若存在第三列及后续列，按无权图口径忽略。
+Read edge-list files from network/. The first two columns of each line
+define an undirected edge; any remaining columns are ignored.
 """
 
 from __future__ import annotations
@@ -18,14 +18,14 @@ from centrality_test import test_hub
 
 
 # ─────────────────────────────────────────────
-# 网络加载
+# Load networks
 # ─────────────────────────────────────────────
 
 NETWORK_DIR = Path(__file__).resolve().parent / "network"
 
 
 def _from_edge_list(path: Path) -> nx.Graph:
-    """读取边列表文件，返回简单无向无权图。"""
+    """Read an edge list as a simple, undirected, unweighted graph."""
     G = nx.Graph()
     with path.open("r", encoding="utf-8", errors="replace") as f:
         for line in f:
@@ -43,11 +43,11 @@ def _from_edge_list(path: Path) -> nx.Graph:
 
 def load_networks(network_dir: str | Path = NETWORK_DIR) -> list[dict]:
     """
-    返回待测网络列表，每项包含：
+    Return network records, each containing:
         name    : str
-        G       : nx.Graph（无向无权简单图）
+        G       : nx.Graph (simple, undirected, unweighted)
         path    : Path
-        has_hub : bool（True = 认为存在中心节点）
+        has_hub : bool (True = treated as having hub structure)
     """
     network_dir = Path(network_dir)
     nets = []
@@ -62,7 +62,7 @@ def load_networks(network_dir: str | Path = NETWORK_DIR) -> list[dict]:
 
 
 # ─────────────────────────────────────────────
-# 单图检验
+# Test one graph
 # ─────────────────────────────────────────────
 
 def run_one(
@@ -73,7 +73,7 @@ def run_one(
     seed: int,
 ) -> list[dict]:
     """
-    对单张真实网络运行 test_hub，返回每个指标的检验结果行。
+    Run test_hub on one real network and return a row per metric.
     """
     G = net["G"]
     started_at = time.perf_counter()
@@ -102,7 +102,7 @@ def run_one(
 
 
 # ─────────────────────────────────────────────
-# 汇总评估
+# Aggregate evaluation
 # ─────────────────────────────────────────────
 
 def evaluate(
@@ -113,12 +113,13 @@ def evaluate(
     verbose: bool = False,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """
-    对所有真实网络运行检验，计算每个指标的 precision / recall / F1。
+    Test all real networks and calculate precision, recall, and F1 per metric.
 
     Returns
     -------
-    summary_df : 每指标汇总（TP/FP/TN/FN/precision/recall/F1）
-    detail_df  : 每张图 × 每指标的明细，含 elapsed_sec，按 N、M 从小到大排序
+    summary_df : Per-metric TP, FP, TN, FN, precision, recall, and F1.
+    detail_df  : Per-graph, per-metric results including elapsed_sec,
+                 sorted by N and M.
     """
     networks = load_networks()
 
@@ -162,7 +163,7 @@ def evaluate(
 
 
 # ─────────────────────────────────────────────
-# 入口
+# Script entry point
 # ─────────────────────────────────────────────
 
 if __name__ == "__main__":
